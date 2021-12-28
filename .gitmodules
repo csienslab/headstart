@@ -1,0 +1,4 @@
+[submodule "pkg/chiavdf"]
+	path = pkg/chiavdf
+	url = git@git.nslab.csie.ntu.edu.tw:headstart/chiavdf.git
+	branch = tag/v1.1.0

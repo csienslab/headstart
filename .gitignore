@@ -1,0 +1,7 @@
+bin/*
+!/bin/.keep
+
+*.wasm
+.DS_Store
+
+.terraform
