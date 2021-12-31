@@ -4,13 +4,9 @@ int main(int argc, char ** argv) {
 
   bool is_parallel = false;
   int L = 1; // L
-  // uint64_t T = 1000; // T
   uint64_t T = 83886; // T
-  // uint64_t T = 369098; // T
-  // std::string discriminant_seed_str ("abcdefghijklmnopqrstuvwxyz012345"); // dicriminant seed
   std::string discriminant_seed_str ("abcdefghijklmnopqrstuvwxyz012345"); // dicriminant seed
   int discriminant_size_bits = 1024; // k
-  // int discriminant_size_bits = 1024; // k
   // std::string all_challenges = "zxcasdqwe,qweasdzxc"; // X_roots
   std::string all_challenges = "zxcasdqwea"; // X_roots
 
@@ -59,68 +55,57 @@ int main(int argc, char ** argv) {
   T_END(ProveAggVDF)
   
   // Verification
+  std::vector<form> g(L);
+  std::vector<std::thread> threads(nthreads);
+  if (is_parallel)
+  {
+      T_START(H_G_parallel)
+      for(int t = 0;t<nthreads;t++)
+      {
+          threads[t] = std::thread(std::bind(
+          [&](const int bi, const int ei, const int t)
+          {
+              for (int i = bi; i < ei; i++){
+                  // T_START(H_G)
+                  int u;
+                  tie(g[i], u) = H_G(challenges_integer[i], D);
+                  // g[i] = H_GFast(challenges_integer[i], D, a_iters[i]);
+                  // T_END(H_G)
+              }
+          },t*L/nthreads,(t+1)==nthreads?L:(t+1)*L/nthreads,t));
+      }
+      std::for_each(threads.begin(),threads.end(),[](std::thread& x){x.join();});
+      T_END(H_G_parallel)
+  } else {
+    T_START(H_G)
+    for (int i = 0; i < L; i++){
+      // T_START(H_G)
+      int u;
+      tie(g[i], u) = H_G(challenges_integer[i], D);
+      // std::cout << "i, u: " << i << ", "<< u << std::endl;
+      // T_END(H_G)
+    }
+    T_END(H_G)
+  }
 
-  // std::vector<integer> y_integer = split2integer(y, ",");
-  // if ( y_integer.size() != 2*L ){
-  //     std::cout << "Expect to get " << 2*L << " integers, but get " << y_integer.size() << " integers" << std::endl;
-  //     return 1;
-  // }
+  bool is_valid = true;
+  if (is_parallel)
+  {
+    T_START(VerifyAggProofParallel)
+    VerifyAggProofParallel(D, L, g, y, proof, t, is_valid);
+    // VerifyAggProofParallel(D, L, g, y, proof, t, is_valid, b_iter);
+    T_END(VerifyAggProofParallel)
+  } else {
+    T_START(VerifyAggProof)
+    VerifyAggProof(D, L, g, y, proof, t, is_valid);
+    T_END(VerifyAggProof)
+  }
 
-  // std::vector<form> g(L), y(L);
-  // std::vector<form> g(L);
-  // std::vector<std::thread> threads(nthreads);
-  // if (is_parallel)
-  // {
-  //     T_START(H_G_parallel)
-  //     for(int t = 0;t<nthreads;t++)
-  //     {
-  //         threads[t] = std::thread(std::bind(
-  //         [&](const int bi, const int ei, const int t)
-  //         {
-  //             for (int i = bi; i < ei; i++){
-  //                 // T_START(H_G)
-  //                 int u;
-  //                 tie(g[i], u) = H_G(challenges_integer[i], D);
-  //                 // g[i] = H_GFast(challenges_integer[i], D, a_iters[i]);
-  //                 // T_END(H_G)
-  //                 // y[i] = form::from_abd(y_integer[2*i], y_integer[2*i+1], D);
-  //             }
-  //         },t*L/nthreads,(t+1)==nthreads?L:(t+1)*L/nthreads,t));
-  //     }
-  //     std::for_each(threads.begin(),threads.end(),[](std::thread& x){x.join();});
-  //     T_END(H_G_parallel)
-  // } else {
-  //   T_START(H_G)
-  //     for (int i = 0; i < L; i++){
-  //       // T_START(H_G)
-  //       int u;
-  //       tie(g[i], u) = H_G(challenges_integer[i], D);
-  //       // std::cout << "i, u: " << i << ", "<< u << std::endl;
-  //       // T_END(H_G)
-  //       // y[i] = form::from_abd(y_integer[2*i], y_integer[2*i+1], D);
-  //   }
-  //   T_END(H_G)
-  // }
-
-  // bool is_valid = true;
-  // if (is_parallel)
-  // {
-  //   T_START(VerifyAggProofParallel)
-  //   VerifyAggProofParallel(D, L, g, y, proof, t, is_valid);
-  //   // VerifyAggProofParallel(D, L, g, y, proof, t, is_valid, b_iter);
-  //   T_END(VerifyAggProofParallel)
-  // } else {
-  //   T_START(VerifyAggProof)
-  //   VerifyAggProof(D, L, g, y, proof, t, is_valid);
-  //   T_END(VerifyAggProof)
-  // }
-
-  // T_END(Total)
-  // std::cout << "is_valid: " << is_valid << std::endl;
+  T_END(Total)
+  std::cout << "is_valid: " << is_valid << std::endl;
 
   // std::cout << "proof_a = " << proof.a.to_string() << std::endl;
   // std::cout << "proof_b = " << proof.b.to_string() << std::endl;
-  // std::cout << std::endl;
 
   return 0;
 }
