@@ -1,16 +1,26 @@
-.PHONY: help aggvdf_test01 submodule
+.PHONY: help aggvdf_test01 testU01 submodule
 
 all: help
 
 INCLUDE_HEADERS = -I${HOME}/opt/include/ -I./pkg/chiavdf/src/ -I./src/
 BIN_PATH = ./bin
+TEST_U01_INCLUDE = -I./cmd/testU01/include -L ./cmd/testU01/lib -ltestu01 -lprobdist -lmylib -lm
+
+ifeq ($(shell uname), Darwin) # macOS
+	GMP = $$(brew --prefix gmp)/lib/libgmp.a $$(brew --prefix gmp)/lib/libgmpxx.a
+else # ubuntu
+	GMP = $$(find /usr/local -name 'libgmp.a') $$(find /usr/local -name 'libgmpxx.a')
+endif
 
 ## Build aggvdf_worker (Mac)
 aggvdf_test01:
-	g++ -O3 -std=c++1z ./cmd/$@/main.cpp \
-	$$(brew --prefix gmp)/lib/libgmp.a \
-	$$(brew --prefix gmp)/lib/libgmpxx.a \
+	g++ -O3 -std=c++1z ./cmd/$@/main.cpp $(GMP) \
 	$(INCLUDE_HEADERS) -pthread -o $(BIN_PATH)/$@
+
+## TestU01 (Ubuntu)
+testU01:
+	g++ -O3 -std=c++1z ./cmd/$@/main.cpp $(GMP) \
+	$(INCLUDE_HEADERS) $(TEST_U01_INCLUDE) -pthread -o $(BIN_PATH)/$@
 
 ## Initialize submodule
 submodule:

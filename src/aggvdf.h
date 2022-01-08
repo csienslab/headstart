@@ -3,7 +3,7 @@
 #include "aggutil.h"
 
 // O(t)
-std::tuple<form, int> EvalVDF(integer D, integer challenge, uint64_t num_iterations) {
+std::tuple<form, int> EvalVDF(integer D, integer challenge, uint64_t num_iterations, bool time_eval = true) {
     integer L = root(-D, 4);
     PulmarkReducer reducer;
     // T_START(EvalVDF_H_G)
@@ -11,12 +11,20 @@ std::tuple<form, int> EvalVDF(integer D, integer challenge, uint64_t num_iterati
     int a_iters;
     tie(y, a_iters) = H_G(challenge, D);
     // T_END(EvalVDF_H_G)
-    T_START(EvalVDF_y)
-    for (int i = 0; i < num_iterations; i++) {
-        nudupl_form(y, y, D, L);
-        reducer.reduce(y);
+    if(time_eval) {
+        T_START(EvalVDF_y)
+        for (int i = 0; i < num_iterations; i++) {
+            nudupl_form(y, y, D, L);
+            reducer.reduce(y);
+        }
+        T_END(EvalVDF_y)
     }
-    T_END(EvalVDF_y)
+    else {
+        for (int i = 0; i < num_iterations; i++) {
+            nudupl_form(y, y, D, L);
+            reducer.reduce(y);
+        }
+    }
     return tie(y, a_iters);
 }
 
