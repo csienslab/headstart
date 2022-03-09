@@ -24,10 +24,7 @@ int main()
     // Create TestU01 PRNG object for our generator
     string name = "chia VDF";
     unif01_Gen* gen = unif01_CreateExternGenBits((char *) name.c_str(), chiaVDF);
-    // for (int i = 0; i < 100; i++) {
-    //     cout<<chiaVDF()<<endl;
-    // }
-
+    
     // Run the tests.
     bbattery_SmallCrush(gen);
 

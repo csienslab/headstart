@@ -3,5 +3,4 @@ include/*
 lib/*
 lib-so/*
 share/*
-TestU01-1.2.3/*
-TestU01.zip
+TestU01*
