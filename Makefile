@@ -24,7 +24,7 @@ testU01:
 
 ## Initialize submodule
 submodule:
-	git submodule add git@git.nslab.csie.ntu.edu.tw:headstart/chiavdf.git pkg/chiavdf
+	git submodule update --init --recursive
 	git submodule set-branch --branch tag/v1.1.0 pkg/chiavdf
 
 clean_submodule:
