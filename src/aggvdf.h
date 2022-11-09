@@ -14,14 +14,14 @@
  * @return a_iter The number of iterations to generate a valid g.
 */
 std::tuple<form, int> EvalAggVdf(integer D, integer challenge_int, uint64_t t) {
-    integer L = root(-D, 4);
+    integer Lroot = root(-D, 4);
     PulmarkReducer reducer;
     form y;
     int a_iter;
     tie(y, a_iter) = H_G(challenge_int, D);
 
     for (int i = 0; i < t; i++) {
-        nudupl_form(y, y, D, L);
+        nudupl_form(y, y, D, Lroot);
         reducer.reduce(y);
     }
 
@@ -49,20 +49,20 @@ std::tuple<form, int> AggreateVdfProofs(integer D,
     std::vector<int> a_iters)
 {
     int d_size = D.num_bits();
-    integer L = root(-D, 4);
+    integer Lroot = root(-D, 4);
     PulmarkReducer reducer;
     int proofs_num = challenge_integers.size();
-    std::vector<form> g(proofs_num);
+    std::vector<form> gs(proofs_num);
 
     // g_i <- H_{Cl(d)}(x_{root,j})
     for (int i = 0; i < proofs_num; i++) {
-        g[i] = H_GFast(challenge_integers[i], D, a_iters[i]);
+        gs[i] = H_GFast(challenge_integers[i], D, a_iters[i]);
     }
 
     // s = bin(g_1)||...||bin(g_n)||bin(y_1)...||bin(y_n)
     std::vector<uint8_t> s;
     for (int i = 0; i < proofs_num; i++){
-        std::vector<uint8_t> g_bytes = SerializeForm(g[i], d_size);
+        std::vector<uint8_t> g_bytes = SerializeForm(gs[i], d_size);
         std::vector<uint8_t> y_bytes = SerializeForm(ys[i], d_size);
         s.insert(s.end(), g_bytes.begin(), g_bytes.end());
         s.insert(s.end(), y_bytes.begin(), y_bytes.end());
@@ -84,11 +84,11 @@ std::tuple<form, int> AggreateVdfProofs(integer D,
         // 2**(k_digest_size) = 2**32
         // alpha_j <- int(H(bin(j)||s))
         integer alpha(hash);
-        agg_g = agg_g * FastPowFormNucomp(g[i], D, alpha, L, reducer);
+        agg_g = agg_g * FastPowFormNucomp(gs[i], D, alpha, Lroot, reducer);
     }
 
     // g^{2^T/l} = g^{2^T/B}
-    form proof = PowFormWithQuotient(agg_g, D, num_iterations, B, L, reducer);
+    form proof = PowFormWithQuotient(agg_g, D, num_iterations, B, Lroot, reducer);
     return std::make_tuple(proof, b_iter);
 }
 
@@ -120,10 +120,11 @@ bool VerifyAggProof(integer &D,
     PulmarkReducer reducer;
     int proofs_num = challenge_integers.size();
     int d_size = D.num_bits();
-    integer L = root(-D, 4);
+    integer Lroot = root(-D, 4);
     std::vector<uint8_t> s;
 
-    std::vector<form> xs(proofs_num);
+    // g_i <- H_{Cl(d)}(x_{root,j})
+    std::vector<form> gs(proofs_num);
     std::vector<std::thread> threads(nthreads);
     for(int tt = 0;tt<nthreads;tt++)
     {
@@ -131,29 +132,28 @@ bool VerifyAggProof(integer &D,
         [&](const int bi, const int ei, const int tt)
         {
             for (int i = bi; i < ei; i++){
-                xs[i] = H_GFast(challenge_integers[i], D, a_iters[i]);
+                gs[i] = H_GFast(challenge_integers[i], D, a_iters[i]);
             }
         },tt*proofs_num/nthreads,(tt+1)==nthreads?proofs_num:(tt+1)*proofs_num/nthreads,tt));
     }
     std::for_each(threads.begin(),threads.end(),[](std::thread& x){x.join();});
 
-    T_START(VerifyAggProof_1)
+    // s = bin(g_1)||...||bin(g_n)||bin(y_1)...||bin(y_n)
     for (int i = 0; i < proofs_num; i++){
-        std::vector<uint8_t> x_bytes = SerializeForm(xs[i], d_size);
+        std::vector<uint8_t> g_bytes = SerializeForm(gs[i], d_size);
         std::vector<uint8_t> y_bytes = SerializeForm(ys[i], d_size);
-        s.insert(s.end(), x_bytes.begin(), x_bytes.end());
+        s.insert(s.end(), g_bytes.begin(), g_bytes.end());
         s.insert(s.end(), y_bytes.begin(), y_bytes.end());
     }
-    T_END(VerifyAggProof_1)
     
-    T_START(HashPrimeFast)
+    // l <- H_{prime}(s)
+    // B is the l here.
+    // B is the Fiat-Shamir non-interactive challenge.
     integer B = HashPrimeFast(s, 264, {263}, b_iter);
-    T_END(HashPrimeFast)
     
-    T_START(VerifyAggProof_2)
     form agg_x = form::identity(D);
     form agg_y = form::identity(D);
-    std::vector<form> agg_xs(nthreads), agg_ys(nthreads);
+    std::vector<form> agg_gs(nthreads), agg_ys(nthreads);
     // std::mutex g_pages_mutex;
     for(int tt = 0;tt<nthreads;tt++)
     {
@@ -171,28 +171,26 @@ bool VerifyAggProof(integer &D,
                 seed.insert(seed.end(), s.begin(), s.end());
                 picosha2::hash256(seed.begin(), seed.end(), hash.begin(), hash.end());
                 integer alpha(hash);
-                agg_xx = agg_xx * FastPowFormNucomp(xs[i], D, alpha, L, reducer);
-                agg_yy = agg_yy * FastPowFormNucomp(ys[i], D, alpha, L, reducer);        
+                agg_xx = agg_xx * FastPowFormNucomp(gs[i], D, alpha, Lroot, reducer);
+                agg_yy = agg_yy * FastPowFormNucomp(ys[i], D, alpha, Lroot, reducer);        
             }
             // std::lock_guard<std::mutex> guard(g_pages_mutex);
             // do not use push_back or index racing will happend
-            agg_xs[tt] = agg_xx;
+            agg_gs[tt] = agg_xx;
             agg_ys[tt] = agg_yy;
         },tt*proofs_num/nthreads,(tt+1)==nthreads?proofs_num:(tt+1)*proofs_num/nthreads,tt));
     }
     std::for_each(threads.begin(),threads.end(),[](std::thread& x){x.join();});
 
-    for (int i=0; i < agg_xs.size(); i++) {
-        agg_x = agg_x * agg_xs[i];
+    for (int i=0; i < agg_gs.size(); i++) {
+        agg_x = agg_x * agg_gs[i];
         agg_y = agg_y * agg_ys[i];
     }
 
-    T_END(VerifyAggProof_2)
-    T_START(VerifyAggProof_3)
+    // r <- 2^{T} / l = 2^{T} / B
     integer r = FastPow(2, num_iterations, B);
-    form f1 = FastPowFormNucomp(aggregated_proof, D, B, L, reducer);
-    form f2 = FastPowFormNucomp(agg_x, D, r, L, reducer);
-    T_END(VerifyAggProof_3)
+    form f1 = FastPowFormNucomp(aggregated_proof, D, B, Lroot, reducer);
+    form f2 = FastPowFormNucomp(agg_x, D, r, Lroot, reducer);
     if (f1 * f2 == agg_y)
     {
         return true;
@@ -202,50 +200,3 @@ bool VerifyAggProof(integer &D,
         return false;
     }
 }
-
-// Old non-paralleled version
-// void VerifyAggProof(integer &D, int proofs_num, std::vector<form>& xs, std::vector<form> ys, 
-//                         form proof, uint64_t iters, bool &is_valid){
-//     PulmarkReducer reducer;
-//     // int int_size = (D.num_bits() + 16) >> 4;
-//     int d_size = D.num_bits();
-//     integer L = root(-D, 4);
-//     std::vector<uint8_t> s;
-//     for (int i = 0; i < proofs_num; i++){
-//         std::vector<uint8_t> x_bytes = SerializeForm(xs[i], d_size);
-//         std::vector<uint8_t> y_bytes = SerializeForm(ys[i], d_size);
-//         s.insert(s.end(), x_bytes.begin(), x_bytes.end());
-//         s.insert(s.end(), y_bytes.begin(), y_bytes.end());
-//     }
-//     integer B = HashPrime(s, 264, {263});
-//     form agg_x = form::identity(D);
-//     form agg_y = form::identity(D);
-//     for (int i = 0; i < proofs_num; i++){
-//         std::vector<uint8_t> seed = int2bytes(i);
-//         seed.insert(seed.end(), s.begin(), s.end());
-//         std::vector<uint8_t> hash(picosha2::k_digest_size);  // output of sha256
-//         picosha2::hash256(seed.begin(), seed.end(), hash.begin(), hash.end());
-//         integer alpha(hash);
-//         cout << "alpha = " << alpha.to_string() << std::endl;
-//         agg_x = agg_x * FastPowFormNucomp(xs[i], D, alpha, L, reducer);
-//         agg_y = agg_y * FastPowFormNucomp(ys[i], D, alpha, L, reducer);
-//     }
-
-//     cout << "agg_x = " << agg_x.a.to_string() << std::endl;
-
-//     integer r = FastPow(2, iters, B);
-//     form f1 = FastPowFormNucomp(proof, D, B, L, reducer);
-//     form f2 = FastPowFormNucomp(agg_x, D, r, L, reducer);
-//     form aaa = f1 * f2;
-//     cout << "f1 * f2 = " << aaa.a.to_string() << std::endl;
-//     cout << "agg_y = " << agg_y.a.to_string() << std::endl;
-
-//     if (f1 * f2 == agg_y)
-//     {
-//         is_valid = true;
-//     }
-//     else
-//     {
-//         is_valid = false;
-//     }
-// }
