@@ -1,19 +1,8 @@
 #include "verifier.h"
 
-// #define TT_START(s) std::chrono::steady_clock::time_point begin_##s = std::chrono::steady_clock::now(); \
-//      std::cout << "Start " << #s << " ..." << std::endl;
 #define T_START(s) std::chrono::steady_clock::time_point begin_##s = std::chrono::steady_clock::now();
 #define T_END(s) std::chrono::steady_clock::time_point end_##s = std::chrono::steady_clock::now(); \
     std::cout << #s << ":" << std::chrono::duration_cast<std::chrono::microseconds> (end_##s - begin_##s).count() << "us" << std::endl;
-
-const std::string X_FILE ("/x_file.txt");
-const std::string Y_FILE ("/y_file.txt");
-const std::string PROOF_FILE ("/proof_file.txt");
-const std::string D_ITER_FILE ("/d_iter.txt");
-const std::string A_ITERS_FILE ("/a_iters.txt");
-const std::string B_ITER_FILE ("/b_iter.txt");
-
-static const size_t nthreads = std::thread::hardware_concurrency();
 
 std::vector<uint8_t> int2bytes(int value){
     std::vector<uint8_t> result;
@@ -129,14 +118,15 @@ integer FastPowMod(integer& base, integer& exp, integer& mod) {
     return res;
 }
 
+// @para a_iter is the number of iteraions to get the a.
 std::tuple<form, int> H_G(integer challenge, integer D){
     int int_size = (D.num_bits() + 16) >> 4;
     int length = 256;
-    std::vector<uint8_t> seed = ConvertIntegerToBytes2(challenge, int_size);
-    vector<int> bitmask = {0, 1};
     // a=3(mod 4)
     // 這樣的話假設 d=k(mod a) where 0<k<a
     // b=k^{(a+1)/4}(mod a)就好了
+    std::vector<uint8_t> seed = ConvertIntegerToBytes2(challenge, int_size);
+    vector<int> bitmask = {0, 1};
     std::vector<uint8_t> hash(picosha2::k_digest_size);  // output of sha256
     std::vector<uint8_t> blob;  // output of 1024 bit hash expansions
     std::vector<uint8_t> sprout = seed;  // seed plus nonce
@@ -266,4 +256,97 @@ form PowFormWithQuotient(form g, integer& D, uint64_t num_iterations, integer& B
         r = ( r*integer(2) ) % B;
     }
     return x;
+}
+
+// leehsun: We modify HashPrime to return the number of iterations to find the prime.
+// If skip_to_iteration != -1, then HashPrime will keep hashing to skip_to_iteration
+// and only test the prime number for once.
+std::tuple<integer, int> HashPrimeWithIteration(
+    std::vector<uint8_t> seed,
+    int length,
+    vector<int> bitmask
+) {
+    assert (length % 8 == 0);
+    std::vector<uint8_t> hash(picosha2::k_digest_size);  // output of sha256
+    std::vector<uint8_t> blob;  // output of 1024 bit hash expansions
+    std::vector<uint8_t> sprout = seed;  // seed plus nonce
+    
+    int iteration_to_find_prime = 0;
+    while (true) {  // While prime is not found
+        blob.resize(0);
+        // cuz sha256 returns 32 bytes
+        // repeat it to fill blob
+        while ((int) blob.size() * 8 < length) {
+            // Increment sprout by 1
+            for (int i = (int) sprout.size() - 1; i >= 0; --i) {
+                sprout[i]++;
+                if (sprout[i])
+                    break;
+            }
+            picosha2::hash256(sprout.begin(), sprout.end(), hash.begin(), hash.end());
+            blob.insert(blob.end(), hash.begin(),
+                std::min(hash.end(), hash.begin() + length / 8 - blob.size()));
+        }
+        assert ((int) blob.size() * 8 == length);
+        integer p(blob);  // p = 7 (mod 8), 2^1023 <= p < 2^1024
+        for (int b: bitmask)
+            p.set_bit(b, true);
+        // Force the number to be odd
+        p.set_bit(0, true);
+
+        iteration_to_find_prime += 1;
+        if (p.prime()) {
+            return std::make_tuple(p, iteration_to_find_prime);
+        }
+    }
+}
+
+integer HashPrimeFast(
+    std::vector<uint8_t> seed,
+    int length,
+    vector<int> bitmask,
+    int skip_to_iteration
+) {
+    assert (length % 8 == 0);
+    std::vector<uint8_t> hash(picosha2::k_digest_size);  // output of sha256
+    std::vector<uint8_t> blob;  // output of 1024 bit hash expansions
+    std::vector<uint8_t> sprout = seed;  // seed plus nonce
+    
+    int iteration_to_find_prime = 0;
+    while (true) {  // While prime is not found
+        blob.resize(0);
+        // cuz sha256 returns 32 bytes
+        // repeat it to fill blob
+        while ((int) blob.size() * 8 < length) {
+            // Increment sprout by 1
+            for (int i = (int) sprout.size() - 1; i >= 0; --i) {
+                sprout[i]++;
+                if (sprout[i])
+                    break;
+            }
+            picosha2::hash256(sprout.begin(), sprout.end(), hash.begin(), hash.end());
+            blob.insert(blob.end(), hash.begin(),
+                std::min(hash.end(), hash.begin() + length / 8 - blob.size()));
+        }
+        assert ((int) blob.size() * 8 == length);
+        integer p(blob);  // p = 7 (mod 8), 2^1023 <= p < 2^1024
+        for (int b: bitmask)
+            p.set_bit(b, true);
+        // Force the number to be odd
+        p.set_bit(0, true);
+
+        iteration_to_find_prime += 1;
+        if (iteration_to_find_prime != skip_to_iteration) {
+            continue;
+        }
+        if (p.prime()) {
+            return p;
+        }
+    }
+}
+
+std::tuple<integer, int> CreateDiscriminantWithIteration(std::vector<uint8_t>& seed, int length = 1024) {
+    integer D; int d_iter;
+    tie(D, d_iter) = HashPrimeWithIteration(seed, length, {0, 1, 2, length - 1});
+    return std::make_tuple(D*integer(-1), d_iter);
 }

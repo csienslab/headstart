@@ -17,10 +17,18 @@ aggvdf_test01:
 	g++ -O3 -std=c++1z ./cmd/$@/main.cpp $(GMP) \
 	$(INCLUDE_HEADERS) -pthread -o $(BIN_PATH)/$@
 
+## Build aggvdf_test01 in docker
+build_aggvdf_test01_docker:
+	docker build \
+		-f deployment/docker/aggvdf_test01/Dockerfile \
+		-t local/aggvdf_test01 \
+		. && \
+	echo "docker run local/aggvdf_test01"
+
 ## TestU01 (Ubuntu)
-testU01:
-	g++ -O3 -std=c++1z ./cmd/$@/main.cpp $(GMP) \
-	$(INCLUDE_HEADERS) $(TEST_U01_INCLUDE) -pthread -o $(BIN_PATH)/$@
+# testU01:
+# 	g++ -O3 -std=c++1z ./cmd/$@/main.cpp $(GMP) \
+# 	$(INCLUDE_HEADERS) $(TEST_U01_INCLUDE) -pthread -o $(BIN_PATH)/$@
 
 ## Initialize submodule
 submodule:
