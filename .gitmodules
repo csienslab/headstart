@@ -1,4 +1,4 @@
 [submodule "pkg/chiavdf"]
 	path = pkg/chiavdf
 	url = git@github.com:LeeXun/chiavdf.git
-	branch = tag/v1.1.0
+	branch = main

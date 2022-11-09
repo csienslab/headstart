@@ -32,8 +32,8 @@ build_aggvdf_test01_docker:
 
 ## Initialize submodule
 submodule:
-	git submodule update --init --recursive
-	git submodule set-branch --branch tag/v1.1.0 pkg/chiavdf
+	git submodule update --init
+	git submodule set-branch --branch main pkg/chiavdf
 
 clean_submodule:
 	git rm --cached pkg/chiavdf
