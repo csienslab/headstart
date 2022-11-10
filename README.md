@@ -17,3 +17,6 @@ brew install gmp
 make build_aggvdf_test01_docker
 docker run local/aggvdf_test01
 ```
+
+# TODO
+cmd/testU01 has not been updated since v1.0.8.
